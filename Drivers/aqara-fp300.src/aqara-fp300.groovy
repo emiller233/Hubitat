@@ -24,11 +24,12 @@
  *  1.0.10   2026-03-17    Dan Ogorchock    Added Firmware Version info thanks to @hubitrep!
  *  1.0.11   2026-03-17    Dan Ogorchock    Minor changes to refresh() to reduce the chance of overwhelming the FP300 sensor, clean up firmware version number reporting, fix dateCode no being updated reliably
  *  1.1.0    2026-04-23    Dan Ogorchock    Add new User Preference to alter the behavior of "BOTH" presence detection mode to mimic Aqara's implementation on their hubs when this setting is Enabled.
+ *  1.2.0    2026-06-09    kkossev          Aqara FP300 version 0.0.0_6542 fixes (plus some tweaks by Dan Ogorchock)
  *
  */
 
-static String version()   { "1.1.0" }
-static String timeStamp() { "2026/04/23 18:40" }
+static String version()   { "1.2.0" }
+static String timeStamp() { "2026/06/09 12:59" }
 
 import hubitat.device.Protocol
 import groovy.transform.Field
@@ -42,7 +43,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Field static final Integer DEFAULT_POLLING_INTERVAL  = 21600  //deviceHealthCheck polling interval
 
 metadata {
-    definition( name: "Aqara FP300 Presence Multi-Sensor", namespace: "ogiewon", author: "Dan Ogorchock", importUrl: "https://raw.githubusercontent.com/ogiewon/Hubitat/refs/heads/master/Drivers/aqara-fp300.src/aqara-fp300.groovy", singleThreaded: true) {
+    definition( name: "Aqara FP300 Presence Multi-Sensor - KKOSSEV", namespace: "ogiewon", author: "Dan Ogorchock", importUrl: "https://raw.githubusercontent.com/ogiewon/Hubitat/refs/heads/master/Drivers/aqara-fp300.src/aqara-fp300.groovy", singleThreaded: true) {
         capability "Sensor"
         capability "Motion Sensor"
         capability "Illuminance Measurement"
@@ -96,7 +97,8 @@ metadata {
             // Custom Temperature reporting
             input name: "temperatureReportingMode", type: "enum", title: "<b>Temperature Reporting Mode</b>", description: "Temperature reporting type when in custom mode.", options: ["1": "Threshold only", "2": "Interval only", "3": "Threshold and Interval"], defaultValue: "1"
             input name: "temperatureReportingInterval", type: "number", title: "<b>Temperature Reporting Interval (s)</b>", description: "Custom time interval for temperature data reporting.", range: 600..3600, defaultValue: 600
-            input name: "temperatureReportingThreshold", type: "decimal", title: "<b>Temperature Reporting Threshold (°C)</b>", description: "Reporting will trigger as temperature change reaches this value when in custom mode.", range: 0.2..3.0, defaultValue: 1.0
+            input name: "temperatureReportingThreshold", type: "decimal", title: "<b>Temperature Reporting Threshold (°C)</b>", description: "Reporting will trigger as temperature change reaches this value when in custom mode.", range: 0..3, defaultValue: 1.0
+            if (temperatureReportingThreshold <0.2) { device.updateSetting("temperatureReportingThreshold", [value: 0.2, type: "decimal"]) }
 
             // Custom  Humidity reporting
             input name: "humidityReportingMode", type: "enum", title: "<b>Humidity Reporting Mode</b>", description: "Humidity reporting type when in custom mode.", options: ["1": "Threshold only", "2": "Interval only", "3": "Threshold and Interval"], defaultValue: "1"
@@ -257,7 +259,7 @@ private void parseAqaraClusterFCC0(String description, Map descMap, Map it) {
             logDebug "<b>Received FP300 unknown report</b> (cluster=0x${it.cluster} attrId=0x${it.attrId} value=0x${it.value})"
             break
         case "00F7":
-            decodeAqaraStruct(description)
+            decodeAqaraStruct(it.value) // ver. 1.2.0 bug fix
             break
         case "00FC":
             log.warn "LUMI LEAVE report received (cluster=FCC0 attrId=00FC value=${it.value})"
@@ -454,13 +456,14 @@ private void parseBatteryTLV(String valueHex) {
     }
 }
 
-void decodeAqaraStruct(String description) {
-    def valueHex = description.split(",").find { it.split(":")[0].trim() == "value" }?.split(":")[1]?.trim()
+void decodeAqaraStruct(String valueHex) {
     if (!valueHex) return
-    int MsgLength = valueHex.size()
-    for (int i = 2; i < (MsgLength - 3); ) {
+    int msgLength = valueHex.size()
+    
+    if (logEnable) log.debug "decodeAqaraStruct 00F7 : len = ${msgLength} valueHex = ${valueHex}"
+    for (int i = 0; i < msgLength - 3; ) {
+        int tag = Integer.parseInt(valueHex[(i+0)..(i+1)], 16)
         int dataType = Integer.parseInt(valueHex[(i+2)..(i+3)], 16)
-        int tag      = Integer.parseInt(valueHex[(i+0)..(i+1)], 16)
         int rawValue = 0
         switch (dataType) {
             case 0x08: case 0x10: case 0x18: case 0x20: case 0x28: case 0x30:
@@ -481,7 +484,7 @@ void decodeAqaraStruct(String description) {
                 i += 8; break
             case 0x42:  // String type – Aqara often encodes firmware version here
                 int strLen = Integer.parseInt(valueHex[(i+4)..(i+5)], 16)
-                if (i + 6 + strLen * 2 <= MsgLength) {
+                if (i + 6 + strLen * 2 <= msgLength) {
                     String strVal = new String(valueHex[(i+6)..(i+5+strLen*2)].decodeHex())
                     switch (tag) {
                         case 0x03: device.updateDataValue("aqaraFirmware", strVal); logDebug "Aqara firmware (tag 0x03): ${strVal}"; break
@@ -619,9 +622,15 @@ void sendBatteryEvent(int pct) {
 
 void parseZDOcommand(Map descMap) {
     switch (descMap.clusterId) {
+        case "0002": // Node Descriptor Request (Node_Desc_req)
+            logDebug "ZDO Node Descriptor request, data=${descMap.data} (Sequence Number:${descMap.data[0]})"
+            runIn(1, "sendTimeSync")  
+            runIn(2, "fp300BlackMagic")
+            break
         case "0013":
             logInfo "Device announcement received"
             fp300BlackMagic()
+            runIn(1, "sendTimeSync")  
             break
         case "8021":
             logDebug "Bind response: ${descMap.data[1] == '00' ? 'Success' : 'Failure'}"
@@ -630,6 +639,36 @@ void parseZDOcommand(Map descMap) {
             logDebug "ZDO: clusterId=${descMap.clusterId} data=${descMap.data}"
     }
 }
+
+
+void sendTimeSync() {
+    // No-arg wrapper so runIn() can call this. Sends Time cluster data proactively
+    // (Hubitat's coordinator never auto-responds to device-originated cluster 0x000A reads).
+    // Probably, without this reply the device's internal 24-hour watchdog timer causes it to leave the network?
+    final long ZIGBEE_EPOCH_OFFSET = 946684800L   // seconds between Unix epoch and ZigBee epoch (Jan 1 2000 UTC)
+    long zigbeeTime = (now() / 1000L).toLong() - ZIGBEE_EPOCH_OFFSET
+    int tzOffsetSec = location.timeZone.rawOffset.intdiv(1000)          // e.g. +10800 for UTC+3
+    int dstSec = location.timeZone.inDaylightTime(new Date()) ? location.timeZone.getDSTSavings().intdiv(1000) : 0
+
+    String tHex   = toLEHex32(zigbeeTime)
+    String tzHex  = toLEHex32(tzOffsetSec)
+    String dstHex = toLEHex32(dstSec)
+
+    // ZCL Read Attributes Response header: 0x18 = profile-wide | server-to-client | disable-default-response
+    // seq=00 (device doesn't require exact match), cmd=0x01 (Read Attributes Response)
+    // Attr 0x0000: type 0xE2 (UTCTime/uint32), Attr 0x0002: type 0x2B (INT32), Attr 0x0005: type 0x2B (INT32)
+    String payload = "18 00 01 00 00 00 E2 ${tHex} 02 00 00 2B ${tzHex} 05 00 00 2B ${dstHex}"
+    List<String> cmds = ["he raw 0x${device.deviceNetworkId} 1 1 0x000A {${payload}} {0x0104}"]
+    logDebug "Sending Time cluster reply: UTC=${zigbeeTime} (${new Date()}) TZ=${tzOffsetSec}s DST=${dstSec}s"
+    sendZigbeeCommands(cmds)
+}
+
+private String toLEHex32(long value) {
+    // 4-byte little-endian hex string, space-separated; handles signed negatives via 2's complement masking
+    long v = value & 0xFFFFFFFFL
+    return String.format("%02X %02X %02X %02X", (v & 0xFF), ((v >> 8) & 0xFF), ((v >> 16) & 0xFF), ((v >> 24) & 0xFF))
+}
+
 
 void parseZHAcommand(Map descMap) {
     switch (descMap.command) {
@@ -847,6 +886,7 @@ void configure() {
     if (logEnable) runIn(1800, "logsOff", [overwrite: true, misfire: "ignore"])  //Enable the debug logging for 30 minutes (i.e. 1800 seconds)
     initializeVars(false)
     runIn(DEFAULT_POLLING_INTERVAL, "deviceHealthCheck", [overwrite: true, misfire: "ignore"])
+    runIn(1, "sendTimeSync", [overwrite: true])
     runIn(5, "fp300BlackMagic")
     runIn(15, "updated")
     logWarn "configure() - If no further logs appear, make sure you have woken the FP300 by pressing the button on it."
@@ -941,20 +981,27 @@ void sendHealthStatusEvent(String value) {
 
 void fp300BlackMagic() {
     List<String> cmds = []
-    
-    // Bind temperature cluster (0x0402)
-    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0402 {${device.zigbeeId}} {}", "delay 50"]
-    
-    // Bind humidity cluster (0x0405)
-    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0405 {${device.zigbeeId}} {}", "delay 50"]
-    
-    // Bind  illuminance cluster (0x0400)
-    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0400 {${device.zigbeeId}} {}", "delay 50"]
-    
-    // Bind manufacturer cluster and read initial values
-    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0xFCC0 {${device.zigbeeId}} {}"]
-    
-    // Call routine to send the Zigbee commands
+    cmds += zigbee.readAttribute(0xFCC0, 0x00EE, [mfgCode: 0x115F], delay=200)   // Read OTA data; makes the device expose more attributes related to OTA
+//    cmds += zigbee.readAttribute(0xFCC0, 0x010C, [mfgCode: 0x115F], delay=200)   // Read motion sensitivity
+//    cmds += zigbee.readAttribute(0xFCC0, 0x0142, [mfgCode: 0x115F], delay=200)   // Read current presence
+//    cmds += zigbee.readAttribute(0xFCC0, 0x014D, [mfgCode: 0x115F], delay=200)   // Read current PIR detection
+//    cmds += zigbee.readAttribute(0xFCC0, 0x014F, [mfgCode: 0x115F], delay=200)   // Read current PIR interval
+//    cmds += zigbee.readAttribute(0xFCC0, 0x0197, [mfgCode: 0x115F], delay=200)   // Read current absence delay timer value
+//    cmds += zigbee.readAttribute(0xFCC0, 0x019A, [mfgCode: 0x115F], delay=200)   // Read detection range
+    cmds += ["he raw 0x${device.deviceNetworkId} 0 0 0x8002 {40 00 00 00 00 40 8f 5f 11 52 52 00 41 2c 52 00 00} {0x0000}", "delay 100",]
+    cmds += "zdo bind 0x${device.deviceNetworkId} 0x01 0x01 0xFCC0 {${device.zigbeeId}} {}"
+    cmds += zigbee.configureReporting(0xFCC0, 0x0142, 0x20, 0, 0, 1, [mfgCode: 0x115F], delay=50)    // Configure presence (0x0142) reporting: min=0s, max=300s, change=1
+    cmds += zigbee.configureReporting(0xFCC0, 0x014D, 0x20, 0, 0, 1, [mfgCode: 0x115F], delay=50)    // Configure PIR detection (0x014D) reporting: min=0s, max=300s, change=1
+//    cmds += "zdo bind 0x${device.deviceNetworkId} 0x01 0x01 0x0402 {${device.zigbeeId}} {}"
+    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0402 {${device.zigbeeId}} {}", "delay 50"] // Bind Temperature cluster
+    cmds += zigbee.configureReporting(0x0402, 0x0000, 0x29, 0, 0, 10, [:], delay=50)                // Configure temperature (MeasuredValue) reporting: min=30s, max=600s, change=0.1°C
+//    cmds += "zdo bind 0x${device.deviceNetworkId} 0x01 0x01 0x0405 {${device.zigbeeId}} {}"
+    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0405 {${device.zigbeeId}} {}", "delay 50"] // Bind Humidity cluster
+    cmds += zigbee.configureReporting(0x0405, 0x0000, 0x21, 0, 0, 100, [:], delay=50)               // Configure humidity (MeasuredValue) reporting: min=30s, max=600s, change=1%
+//    cmds += "zdo bind 0x${device.deviceNetworkId} 0x01 0x01 0x0400 {${device.zigbeeId}} {}"
+    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0400 {${device.zigbeeId}} {}", "delay 50"] // Bind Illuminance cluster
+    cmds += zigbee.configureReporting(0x0400, 0x0000, 0x21, 0, 0, 50, [:], delay=50)                // Configure illuminance (MeasuredValue) reporting: min=30s, max=600s, change=50 (raw lux units)
+    logDebug "fp300BlackMagic() finished"
     sendZigbeeCommands(cmds)
 }
 
