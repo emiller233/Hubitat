@@ -1166,11 +1166,11 @@ void fp300BlackMagic() {
     cmds += ["zdo bind 0x${device.deviceNetworkId} 0x01 0x01 0x0000 {${device.zigbeeId}} {}", "delay 100"] // bind Basic cluster for button press (attr 0x0005)
     cmds += zigbee.configureReporting(0x0000, 0x0005, 0x42, 0, 7200, null, [:], delay=200)                 // configure reporting: Basic attr 0x0005 (CharacterString), button press indicator
         
-    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0402 {${device.zigbeeId}} {}", "delay 100"] // Bind Temperature cluster
+//    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0402 {${device.zigbeeId}} {}", "delay 100"] // Bind Temperature cluster
 //    cmds += zigbee.configureReporting(0x0402, 0x0000, 0x29, 0, 0, 10, [:], delay=100)                    // Configure temperature (MeasuredValue) reporting: min=30s, max=600s, change=0.1°C
-    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0405 {${device.zigbeeId}} {}", "delay 100"] // Bind Humidity cluster
+//    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0405 {${device.zigbeeId}} {}", "delay 100"] // Bind Humidity cluster
 //    cmds += zigbee.configureReporting(0x0405, 0x0000, 0x21, 0, 0, 100, [:], delay=100)                   // Configure humidity (MeasuredValue) reporting: min=30s, max=600s, change=1%
-    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0400 {${device.zigbeeId}} {}", "delay 100"] // Bind Illuminance cluster
+//    cmds += ["zdo bind ${device.deviceNetworkId} 0x01 0x01 0x0400 {${device.zigbeeId}} {}", "delay 100"] // Bind Illuminance cluster
 //    cmds += zigbee.configureReporting(0x0400, 0x0000, 0x21, 0, 0, 50, [:], delay=100)                    // Configure illuminance (MeasuredValue) reporting: min=30s, max=600s, change=50 (raw lux units)
     
     logDebug "fp300BlackMagic() finished"
