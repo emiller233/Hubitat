@@ -26,12 +26,12 @@
  *  1.1.0    2026-04-23    Dan Ogorchock    Add new User Preference to alter the behavior of "BOTH" presence detection mode to mimic Aqara's implementation on their hubs when this setting is Enabled.
  *  1.2.0    2026-06-09    kkossev          Aqara FP300 version 0.0.0_6542 fixes (plus some tweaks by Dan Ogorchock)
  *  1.2.1    2026-06-20    Dan Ogorchock    Stop auto-triggering refresh() after initialize(), as the sensor is not awake to receive it (i.e. no one has pressed the button on the sensor)
- *  1.2.2    2026-06-20    Dan Ogorchock    Ported FP300 0.0.0_6542 reliability changes from kkossev P1 driver v2.1.7: Aqara-like initialization handshake (0x00FF random token write + E1-style read sequence) in fp300BlackMagic(); presence/PIR reporting max interval changed from 0 to 1800s for a periodic heartbeat (targets motion-only reporting stalls).
+ *  1.2.2    2026-06-21    Dan Ogorchock    Ported FP300 0.0.0_6542 reliability changes from kkossev P1 driver v2.1.7: Aqara-like initialization handshake (0x00FF random token write + E1-style read sequence) in fp300BlackMagic(); presence/PIR reporting max interval changed from 0 to 1800s for a periodic heartbeat (targets motion-only reporting stalls).
  *
  */
 
 static String version()   { "1.2.2" }
-static String timeStamp() { "2026/06/20 10:40" }
+static String timeStamp() { "2026/06/21 07:10" }
 
 import hubitat.device.Protocol
 import groovy.transform.Field
@@ -697,7 +697,7 @@ void parseZDOcommand(Map descMap) {
 
             sendZigbeeCommands(cmds)
         
-            log.warn "ZDO Node Descriptor Request received for NWK ${nwkAddrRequested}; response is currently disabled (expecting HE platform to handle it)."
+            logDebug "Overriding Hubutat ZDO Node Descriptor Response for NWK ${nwkAddrRequested}; nodeDesc=${nodeDesc} (TSN=${seqNum})"
             break
         case "0006" :
             if (logEnable) log.info "${device.displayName} Received match descriptor request, data=${descMap.data} (Sequence Number:${descMap.data[0]}, Input cluster count:${descMap.data[5]} Input cluster: 0x${descMap.data[7]+descMap.data[6]})"
