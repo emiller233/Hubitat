@@ -760,7 +760,7 @@ void parseZHAcommand(Map descMap) {
             def status = descMap.data[2]
             def attrId = descMap.data[1] + descMap.data[0] 
             if (status == "86") {
-                logWarn "<b>UNSUPPORTED/b> Read attribute response: cluster ${descMap.clusterId} Attributte ${attrId} status code ${status}"
+                logWarn "<b>UNSUPPORTED</b> Read attribute response: cluster ${descMap.clusterId} Attributte ${attrId} status code ${status}"
             }
             else {
                 switch (descMap.clusterId) {
