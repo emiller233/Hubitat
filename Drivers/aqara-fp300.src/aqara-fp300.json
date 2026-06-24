@@ -3,7 +3,7 @@
     "author": "Dan Ogorchock",
     "version": "1.2.2",
     "category": "Control",
-    "minimumHEVersion": "2.4.4.133",
+    "minimumHEVersion": "2.5.0.157",
     "dateReleased": "2026-06-24",
     "releaseNotes": "1.2.2 2026-06-24 Updates to support Aqara FP300 firmware 0.0.0_6542.",
     "communityLink": "https://community.hubitat.com/t/release-dedicated-aqara-fp300-presence-multi-sensor-zigbee-driver/162353?u=ogiewon",
