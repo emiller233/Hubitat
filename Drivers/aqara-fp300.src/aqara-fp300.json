@@ -1,11 +1,11 @@
 {
     "packageName": "Aqara FP300 Presence Multi-Sensor",
     "author": "Dan Ogorchock",
-    "version": "1.1.0",
+    "version": "1.2.2",
     "category": "Control",
     "minimumHEVersion": "2.4.4.133",
-    "dateReleased": "2026-04-23",
-    "releaseNotes": "1.1.0 2026-04-23 Added new 'Use Aqara Presence Detection Algorithm' user preference.  When enabled, will eliminate false PIR detections when using BOTH the PIR and mmWave sensors, but reaction time will be slower.",
+    "dateReleased": "2026-06-24",
+    "releaseNotes": "1.2.2 2026-06-24 Updates to support Aqara FP300 firmware 0.0.0_6542.",
     "communityLink": "https://community.hubitat.com/t/release-dedicated-aqara-fp300-presence-multi-sensor-zigbee-driver/162353?u=ogiewon",
     "drivers": [
         {
